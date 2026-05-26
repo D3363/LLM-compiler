@@ -1,3 +1,9 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 import OpenAI from 'openai';
 import { z } from 'zod';
 import * as dotenv from 'dotenv';
@@ -172,56 +178,18 @@ const server = express();
 server.use(express.json());
 
 // Landing page for when someone opens your Render link in a browser
-server.get('/', (req: Request, res: Response) => {
-  res.send(`
-    <body style="font-family: sans-serif; padding: 40px; line-height: 1.6; max-width: 800px; margin: 0 auto;">
-      <h1>🤖 LLM Compiler Pipeline is Operational!</h1>
-      <p>The automated software generation pipeline is hosted successfully.</p>
-      <p>To run the compiler, send a <strong>POST</strong> request to <code>/compile</code> with a prompt instruction in the body.</p>
-      <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px;">
-{
-  "prompt": "Build a CRM with login, contacts, and dashboard. Admins see analytics."
-}</pre>
-    </body>
-  `);
-});
-
-// The dynamic execution endpoint Render will target
-server.post('/compile', async (req: Request, res: Response) => {
+// Serves the detached index.html frontend layout file seamlessly
+server.get('/', async (req: Request, res: Response) => {
   try {
-    const { prompt } = req.body;
-    
-    if (!prompt) {
-       res.status(400).json({ success: false, error: "Missing 'prompt' field in request payload." });
-       return;
-    }
-
-    console.log(`\n🚀 Remotely invoking compilation pipeline for prompt: "${prompt}"`);
-    
-    // Execute the linear pipeline modules
-    const intent = await LLMCompiler.extractIntent(prompt);
-    const db = await LLMCompiler.designDatabase(intent);
-    const api = await LLMCompiler.designAPI(intent, db);
-    const runtimeCode = generateExecutableExpressCode(api);
-
-    // Return the complete system design artifact down the wire
-    res.json({
-      success: true,
-      compiledAt: new Date().toISOString(),
-      schemas: {
-        intent,
-        database: db,
-        api
-      },
-      executableRuntimeCode: runtimeCode
-    });
-
+    const htmlPath = path.join(__dirname, 'index.html');
+    const htmlContent = await fs.readFile(htmlPath, 'utf-8');
+    res.setHeader('Content-Type', 'text/html');
+    res.status(200).send(htmlContent);
   } catch (error: any) {
-    console.error("Pipeline failure during remote compilation:", error.message);
-    res.status(500).json({ success: false, error: error.message });
+    console.error("Failed to read interface file:", error.message);
+    res.status(500).send("<h1>Internal Server Error</h1><p>Missing user interface assets.</p>");
   }
 });
-
 // Bind to Render's dynamic port environment variable, default locally to 3000
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`🚀 Compiler web service running on port ${PORT}`));

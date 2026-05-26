@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🤖 LLM Compiler Pipeline Control Panel</title>
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --accent: #38bdf8;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      margin: 0;
+      padding: 20px;
+      line-height: 1.5;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header { margin-bottom: 30px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+    h1 { margin: 0 0 10px 0; color: var(--accent); font-size: 2rem; }
+    p { margin: 0; color: var(--text-muted); }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 25px; }
+    @media (min-width: 768px) { .grid { grid-template-columns: 400px 1fr; } }
+    .panel { background-color: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 20px; height: fit-content; }
+    label { display: block; font-weight: 600; margin-bottom: 10px; color: var(--text-main); }
+    textarea { width: 100%; height: 150px; background-color: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; color: var(--text-main); padding: 12px; box-sizing: border-box; resize: vertical; }
+    textarea:focus { outline: none; border-color: var(--accent); }
+    button { width: 100%; background-color: var(--accent); color: var(--bg-primary); border: none; padding: 12px; font-size: 1rem; font-weight: 700; border-radius: 6px; cursor: pointer; margin-top: 15px; }
+    button:disabled { background-color: var(--border); color: var(--text-muted); cursor: not-allowed; }
+    .tabs { display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+    .tab { background: none; border: none; color: var(--text-muted); padding: 8px 16px; cursor: pointer; font-weight: 600; font-size: 0.9rem; width: auto; margin: 0; }
+    .tab.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
+    pre { background-color: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 15px; overflow-x: auto; margin: 0; max-height: 600px; font-family: monospace; font-size: 0.875rem; }
+    .hidden { display: none; }
+    .status { margin-top: 15px; font-size: 0.9rem; font-weight: 600; }
+    .status.loading { color: var(--accent); }
+    .status.success { color: #4ade80; }
+    .status.error { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🤖 LLM Compiler Terminal</h1>
+      <p>Multi-stage semantic translation pipeline with runtime validation and self-healing repair modules.</p>
+    </header>
+
+    <div class="grid">
+      <div class="panel">
+        <label for="promptInput">Compiler Instruction Prompt</label>
+        <textarea id="promptInput" placeholder="Specify requirements... e.g., Build a CRM with contacts and analytics. Only Admins can see analytics."></textarea>
+        <button id="compileBtn" onclick="executeCompilation()">Compile Codebase</button>
+        <div id="statusOutput" class="status"></div>
+      </div>
+
+      <div class="panel">
+        <div class="tabs">
+          <button class="tab active" id="jsonTab" onclick="switchTab('json')">Generated JSON AST</button>
+          <button class="tab" id="codeTab" onclick="switchTab('code')">Compiled Express Code</button>
+        </div>
+        
+        <div id="jsonWrapper">
+          <pre><code id="jsonOutput">// Awaiting execution artifacts... Output will be rendered as formatted structural JSON.</code></pre>
+        </div>
+        <div id="codeWrapper" class="hidden">
+          <pre><code id="codeOutput">// Awaiting compilation... Generated Express.js deployment infrastructure script will appear here.</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentTab = 'json';
+
+    function switchTab(tabName) {
+      currentTab = tabName;
+      document.getElementById('jsonTab').classList.toggle('active', tabName === 'json');
+      document.getElementById('codeTab').classList.toggle('active', tabName === 'code');
+      document.getElementById('jsonWrapper').classList.toggle('hidden', tabName !== 'json');
+      document.getElementById('codeWrapper').classList.toggle('hidden', tabName !== 'code');
+    }
+
+    async function executeCompilation() {
+      const promptText = document.getElementById('promptInput').value.trim();
+      const btn = document.getElementById('compileBtn');
+      const status = document.getElementById('statusOutput');
+      
+      if (!promptText) {
+        alert('Please provide a descriptive prompt initialization instruction.');
+        return;
+      }
+
+      btn.disabled = true;
+      status.className = 'status loading';
+      status.innerText = '⚙️ Running structural compilation segments via Groq...';
+      
+      try {
+        const response = await fetch('/compile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: promptText })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          status.className = 'status success';
+          status.innerText = '✅ Compilation Successful! Schemas verified.';
+          document.getElementById('jsonOutput').innerText = JSON.stringify(data.schemas, null, 2);
+          document.getElementById('codeOutput').innerText = data.executableRuntimeCode;
+        } else {
+          throw new Error(data.error || 'Unknown pipeline failure.');
+        }
+      } catch (err) {
+        status.className = 'status error';
+        status.innerText = '❌ Compilation Failed.';
+        document.getElementById('jsonOutput').innerText = '// Error Stack Trace:\n' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
