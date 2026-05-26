@@ -131,12 +131,19 @@ class LLMCompiler {
 }
 
 // ==========================================
-// 4. RUNTIME SCRIPT COMPILER
+// 5. EXECUTION AWARENESS (RUNTIME MOCK)
 // ==========================================
 
 function generateExecutableExpressCode(apiSchema: z.infer<typeof APISchema>) {
   console.log("\n[Execution Stage] Generating production-ready Express.js runtime assembly...\n");
-  let code = `import express from 'express';\nconst app = express();\napp.use(express.json());\n\n`;
+  let code = `import express from 'express';\n';
+  code += `const app = express();\n`;
+  code += `app.use(express.json());\n\n`;
+  code += `// Mock Authentication Middleware\n`;
+  code += `const requireAuth = (roles) => (req, res, next) => {\n`;
+  code += `    console.log('Checking permissions for roles:', roles);\n`;
+  code += `    next();\n`;
+  code += `};\n\n`;
   
   apiSchema.endpoints.forEach(endpoint => {
     const authMiddleware = endpoint.requiresAuth ? `requireAuth(['${endpoint.allowedRoles.join("', '")}']), ` : '';
@@ -151,22 +158,63 @@ function generateExecutableExpressCode(apiSchema: z.infer<typeof APISchema>) {
 }
 
 // ==========================================
-// MAIN RUN PIPELINE
+// 6. EXPOSING THE COMPILER AS A PUBLIC WEB API
 // ==========================================
+import express, { type Request, type Response } from 'express';
+const server = express();
+server.use(express.json());
 
-async function run() {
+// Landing page for when someone opens your Render link in a browser
+server.get('/', (req: Request, res: Response) => {
+  res.send(`
+    <body style="font-family: sans-serif; padding: 40px; line-height: 1.6; max-width: 800px; margin: 0 auto;">
+      <h1>🤖 LLM Compiler Pipeline is Operational!</h1>
+      <p>The automated software generation pipeline is hosted successfully.</p>
+      <p>To run the compiler, send a <strong>POST</strong> request to <code>/compile</code> with a prompt instruction in the body.</p>
+      <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px;">
+{
+  "prompt": "Build a CRM with login, contacts, and dashboard. Admins see analytics."
+}</pre>
+    </body>
+  `);
+});
+
+// The dynamic execution endpoint Render will target
+server.post('/compile', async (req: Request, res: Response) => {
   try {
-    const rawPrompt = "Build a CRM with login, contacts, dashboard, role-based access, and premium plan with payments. Admins can see analytics.";
+    const { prompt } = req.body;
     
-    const intent = await LLMCompiler.extractIntent(rawPrompt);
+    if (!prompt) {
+       res.status(400).json({ success: false, error: "Missing 'prompt' field in request payload." });
+       return;
+    }
+
+    console.log(`\n🚀 Remotely invoking compilation pipeline for prompt: "${prompt}"`);
+    
+    // Execute the linear pipeline modules
+    const intent = await LLMCompiler.extractIntent(prompt);
     const db = await LLMCompiler.designDatabase(intent);
     const api = await LLMCompiler.designAPI(intent, db);
-    
-    console.log("\n✅ COMPILER PIPELINE SUCCESSFUL");
-    console.log(generateExecutableExpressCode(api));
-  } catch (error) {
-    console.error("\n❌ PIPELINE CRASHED:", error);
-  }
-}
+    const runtimeCode = generateExecutableExpressCode(api);
 
-run();
+    // Return the complete system design artifact down the wire
+    res.json({
+      success: true,
+      compiledAt: new Date().toISOString(),
+      schemas: {
+        intent,
+        database: db,
+        api
+      },
+      executableRuntimeCode: runtimeCode
+    });
+
+  } catch (error: any) {
+    console.error("Pipeline failure during remote compilation:", error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Bind to Render's dynamic port environment variable, default locally to 3000
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`🚀 Compiler web service running on port ${PORT}`));

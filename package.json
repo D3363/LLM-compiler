@@ -13,11 +13,13 @@
   "dependencies": {
     "@google/genai": "^2.6.0",
     "dotenv": "^17.4.2",
+    "express": "^5.2.1",
     "openai": "^6.39.0",
     "zod": "^4.4.3",
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^25.9.1",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3"
