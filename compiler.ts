@@ -174,11 +174,56 @@ function generateExecutableExpressCode(apiSchema: z.infer<typeof APISchema>) {
 // 5. EXPOSING THE COMPILER AS A PUBLIC WEB API
 // ==========================================
 import express, { type Request, type Response } from 'express';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 const server = express();
+
+// A. Crucial Middleware - tells the server to read incoming JSON payloads
 server.use(express.json());
 
-// Landing page for when someone opens your Render link in a browser
-// Serves the detached index.html frontend layout file seamlessly
+// B. Resolve correct absolute directory paths under modern ESM configuration
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// C. The POST Endpoint - Handles the heavy AI compilation logic
+server.post('/compile', async (req: Request, res: Response) => {
+  try {
+    const { prompt } = req.body;
+    
+    if (!prompt) {
+       res.status(400).json({ success: false, error: "Missing 'prompt' field in request payload." });
+       return;
+    }
+
+    console.log(`\n🚀 Remotely invoking compilation pipeline for prompt: "${prompt}"`);
+    
+    // Execute the linear pipeline modules
+    const intent = await LLMCompiler.extractIntent(prompt);
+    const db = await LLMCompiler.designDatabase(intent);
+    const api = await LLMCompiler.designAPI(intent, db);
+    const runtimeCode = generateExecutableExpressCode(api);
+
+    // Return the complete system design artifact down the wire
+    res.json({
+      success: true,
+      compiledAt: new Date().toISOString(),
+      schemas: {
+        intent,
+        database: db,
+        api
+      },
+      executableRuntimeCode: runtimeCode
+    });
+
+  } catch (error: any) {
+    console.error("Pipeline failure during remote compilation:", error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// D. The GET Endpoint - Serves the detached index.html frontend layout file seamlessly
 server.get('/', async (req: Request, res: Response) => {
   try {
     const htmlPath = path.join(__dirname, 'index.html');
@@ -190,6 +235,7 @@ server.get('/', async (req: Request, res: Response) => {
     res.status(500).send("<h1>Internal Server Error</h1><p>Missing user interface assets.</p>");
   }
 });
-// Bind to Render's dynamic port environment variable, default locally to 3000
+
+// E. Bind to Render's dynamic port environment variable, default locally to 3000
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`🚀 Compiler web service running on port ${PORT}`));

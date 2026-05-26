@@ -101,11 +101,14 @@
       status.innerText = '⚙️ Running structural compilation segments via Groq...';
       
       try {
-        const response = await fetch('/compile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: promptText })
-        });
+        const response = await fetch(`${window.location.origin}/compile`, {
+            method: 'POST',
+            headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json' // Explicitly tell the server you only want JSON
+        },
+        body: JSON.stringify({ prompt: promptText })
+    });
 
         const data = await response.json();
 
