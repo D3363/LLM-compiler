@@ -118,20 +118,47 @@ async function generateWithRepair<T>(
 
 class LLMCompiler {
   static async extractIntent(rawInput: string) {
-    console.log("[Stage 1] Extracting System Intent via Groq Cloud...");
-    const systemPrompt = `Extract core system dependencies. You must return a JSON object with these exact keys: appName (string), coreEntities (array of strings), userRoles (array of strings), businessLogicRules (array of strings).`;
-    return await generateWithRepair(systemPrompt, rawInput, IntentSchema, "Intent Extraction");
-  }
+  console.log("[Stage 1] Extracting System Intent via Groq Cloud...");
+  const systemPrompt = `Extract core system dependencies: appName (string), coreEntities (array), userRoles (array), businessLogicRules (array).
+  CRITICAL ASSUMPTION RULE: If the user prompt is vague, underspecified, or lacks concrete roles/rules, you MUST make reasonable engineering assumptions to build a baseline functional app. 
+  Append an explicit documentation rule string to the end of your "businessLogicRules" array starting with 'ASSUMPTION: ' explaining the choices you made to stabilize the compilation.`;
+  return await generateWithRepair(systemPrompt, rawInput, IntentSchema, "Intent Extraction");
+}
 
-  static async designDatabase(intent: z.infer<typeof IntentSchema>): Promise<z.infer<typeof DBTableSchema>[]> {
-    console.log("[Stage 2] Building Database Architectures...");
-    const systemPrompt = `Map application parameters to database designs. You MUST return a JSON object containing a single root key named "tables", which contains an array of database tables.
-    Each table must have a "tableName" string and a "columns" array. Example structure: { "tables": [{ "tableName": "users", "columns": [] }] }`;
+static async designDatabase(intent: z.infer<typeof IntentSchema>): Promise<z.infer<typeof DBTableSchema>[]> {
+  console.log("[Stage 2] Building Database Architectures...");
+  
+  const systemPrompt = `Map application parameters to database designs. You MUST return a JSON object containing a single root key named "tables", which contains an array of database tables.
+  Each table must have a "tableName" string (lowercase, snake_case) and a "columns" array. 
+  
+  CRITICAL RELATIONAL CONSTRAINT: For any column where type is "reference", you MUST provide the "references" field string indicating which tableName it links to.
+  Example column structure: { "name": "patient_id", "type": "reference", "isRequired": true, "references": "patients" }`;
+  
+  const wrapperSchema = z.object({ tables: z.array(DBTableSchema) });
+  const result = await generateWithRepair(systemPrompt, JSON.stringify(intent), wrapperSchema, "Database Schema");
+  
+  // Deterministic Post-Processing Optimization Layer (The Compiler Guardrail)
+  const validTableNames = result.tables.map(t => t.tableName);
+  
+  const sanitizedTables = result.tables.map(table => {
+    const sanitizedColumns = table.columns.map(col => {
+      // Self-heal case: Model marked a column as a reference but left out the targeting text
+      if (col.type === 'reference' && !col.references) {
+        // Look for implicit reference naming conventions (e.g., "patient_id" -> guesses "patients")
+        const inferredTable = col.name.endsWith('_id') ? `${col.name.slice(0, -3)}s` : col.name;
+        return {
+          ...col,
+          references: validTableNames.includes(inferredTable) ? inferredTable : validTableNames[0]
+        };
+      }
+      return col;
+    });
     
-    const wrapperSchema = z.object({ tables: z.array(DBTableSchema) });
-    const result = await generateWithRepair(systemPrompt, JSON.stringify(intent), wrapperSchema, "Database Schema");
-    return result.tables;
-  }
+    return { ...table, columns: sanitizedColumns };
+  });
+
+  return sanitizedTables;
+}
 
   static async designAPI(intent: z.infer<typeof IntentSchema>, dbSchema: z.infer<typeof DBTableSchema>[]) {
     console.log("[Stage 3] Compiling REST Microservice Routing & Middleware...");
@@ -145,11 +172,14 @@ class LLMCompiler {
   }
 }
 
-// ==========================================
+ // ==========================================
 // 4. EXECUTION AWARENESS (RUNTIME MOCK)
 // ==========================================
 
-function generateExecutableExpressCode(apiSchema: z.infer<typeof APISchema>) {
+function generateExecutableExpressCode(
+  apiSchema: z.infer<typeof APISchema>, 
+  dbSchema: z.infer<typeof DBTableSchema>[]
+) {
   console.log("\n[Execution Stage] Generating production-ready Express.js runtime assembly...\n");
   
   let code = "import express from 'express';\n";
@@ -160,12 +190,46 @@ function generateExecutableExpressCode(apiSchema: z.infer<typeof APISchema>) {
   code += "    console.log('Checking permissions for roles:', roles);\n";
   code += "    next();\n};\n\n";
   
+  // Tracker to eliminate duplicate route mutations under pressure
+  const seenPaths = new Set<string>();
+
   apiSchema.endpoints.forEach(endpoint => {
-    const authMiddleware = endpoint.requiresAuth ? `requireAuth(['${endpoint.allowedRoles.join("', '")}']), ` : '';
     const methodStr = endpoint.method.toLowerCase();
+    
+    // Create a unique compound key tracking both HTTP Verb and Destination Path
+    const uniqueRouteKey = `${methodStr}:${endpoint.path}`;
+    
+    // Guardrail: If the model duplicates a route under cyclical pressure, skip it
+    if (seenPaths.has(uniqueRouteKey)) {
+      return; 
+    }
+    seenPaths.add(uniqueRouteKey);
+
+    const authMiddleware = endpoint.requiresAuth ? `requireAuth(['${endpoint.allowedRoles.join("', '")}']), ` : '';
+    
+    // Safely look up matching columns across layers
+    const primaryTable = endpoint.interactsWithTables[0];
+    const matchingTable = dbSchema?.find((t: any) => t.tableName === primaryTable);
+    
+    let mockRecord: Record<string, any> = { id: 1 };
+    if (matchingTable && matchingTable.columns) {
+      matchingTable.columns.forEach((col: any) => {
+        if (col.name !== 'id') {
+          mockRecord[col.name] = col.type === 'number' ? 42 : col.type === 'boolean' ? true : `mock_${col.name}`;
+        }
+      });
+    }
+
     code += `// Context Dependency Tables: ${endpoint.interactsWithTables.join(", ")}\n`;
     code += `app.${methodStr}('${endpoint.path}', ${authMiddleware}async (req, res) => {\n`;
-    code += "    res.status(200).json({ pipelineStatus: 'operational' });\n});\n\n";
+    
+    if (methodStr === 'get') {
+      code += `    // Verified fields matching database schema columns for table: ${primaryTable}\n`;
+      code += `    res.status(200).json([${JSON.stringify(mockRecord, null, 8).trim()}]);\n`;
+    } else {
+      code += `    res.status(201).json({ success: true, message: 'Record written to ${primaryTable}' });\n`;
+    }
+    code += "});\n\n";
   });
   
   code += "app.listen(3000, () => console.log('Local execution environment active on port 3000'));\n";
@@ -196,7 +260,7 @@ server.post('/compile', async (req: Request, res: Response) => {
     const intent = await LLMCompiler.extractIntent(prompt);
     const db = await LLMCompiler.designDatabase(intent);
     const api = await LLMCompiler.designAPI(intent, db);
-    const runtimeCode = generateExecutableExpressCode(api);
+    const runtimeCode = generateExecutableExpressCode(api, db);
 
     res.json({
       success: true,
