@@ -27,16 +27,29 @@
     p { margin: 0; color: var(--text-muted); }
     .grid { display: grid; grid-template-columns: 1fr; gap: 25px; }
     @media (min-width: 768px) { .grid { grid-template-columns: 400px 1fr; } }
-    .panel { background-color: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 20px; height: fit-content; }
+    .panel { background-color: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 20px; height: fit-content; position: relative; }
     label { display: block; font-weight: 600; margin-bottom: 10px; color: var(--text-main); }
-    textarea { width: 100%; height: 150px; background-color: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; color: var(--text-main); padding: 12px; box-sizing: border-box; resize: vertical; }
+    textarea { width: 100%; height: 180px; background-color: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; color: var(--text-main); padding: 12px; box-sizing: border-box; resize: vertical; font-family: inherit; font-size: 0.95rem; }
     textarea:focus { outline: none; border-color: var(--accent); }
-    button { width: 100%; background-color: var(--accent); color: var(--bg-primary); border: none; padding: 12px; font-size: 1rem; font-weight: 700; border-radius: 6px; cursor: pointer; margin-top: 15px; }
+    
+    /* Button Layout Styling */
+    .action-group { display: flex; gap: 10px; margin-top: 15px; }
+    button { background-color: var(--accent); color: var(--bg-primary); border: none; padding: 12px; font-size: 1rem; font-weight: 700; border-radius: 6px; cursor: pointer; transition: opacity 0.2s; width: 100%; }
+    button:hover { opacity: 0.9; }
     button:disabled { background-color: var(--border); color: var(--text-muted); cursor: not-allowed; }
-    .tabs { display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
-    .tab { background: none; border: none; color: var(--text-muted); padding: 8px 16px; cursor: pointer; font-weight: 600; font-size: 0.9rem; width: auto; margin: 0; }
-    .tab.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
-    pre { background-color: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 15px; overflow-x: auto; margin: 0; max-height: 600px; font-family: monospace; font-size: 0.875rem; }
+    .btn-secondary { background-color: transparent; border: 1px solid var(--border); color: var(--text-main); }
+    .btn-secondary:hover { background-color: var(--bg-primary); border-color: var(--text-muted); }
+    
+    .tabs-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); margin-bottom: 15px; padding-bottom: 5px; }
+    .tabs { display: flex; gap: 10px; }
+    .tab { background: none; border: none; color: var(--text-muted); padding: 8px 16px; cursor: pointer; font-weight: 600; font-size: 0.9rem; width: auto; }
+    .tab.active { color: var(--accent); border-bottom: 2px solid var(--accent); font-weight: 700; }
+    
+    /* Copy Button Tooltip Area */
+    .btn-copy { font-size: 0.8rem; padding: 6px 12px; width: auto; background-color: var(--border); color: var(--text-main); border: 1px solid var(--border); }
+    .btn-copy:hover { background-color: var(--bg-primary); color: var(--accent); }
+    
+    pre { background-color: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 15px; overflow-x: auto; margin: 0; max-height: 600px; font-family: monospace; font-size: 0.875rem; white-space: pre-wrap; word-break: break-all; }
     .hidden { display: none; }
     .status { margin-top: 15px; font-size: 0.9rem; font-weight: 600; }
     .status.loading { color: var(--accent); }
@@ -55,14 +68,21 @@
       <div class="panel">
         <label for="promptInput">Compiler Instruction Prompt</label>
         <textarea id="promptInput" placeholder="Specify requirements... e.g., Build a CRM with contacts and analytics. Only Admins can see analytics."></textarea>
-        <button id="compileBtn" onclick="executeCompilation()">Compile Codebase</button>
+        
+        <div class="action-group">
+          <button id="compileBtn" onclick="executeCompilation()">Compile Codebase</button>
+          <button class="btn-secondary" id="clearBtn" onclick="clearPrompt()">Clear</button>
+        </div>
         <div id="statusOutput" class="status"></div>
       </div>
 
       <div class="panel">
-        <div class="tabs">
-          <button class="tab active" id="jsonTab" onclick="switchTab('json')">Generated JSON AST</button>
-          <button class="tab" id="codeTab" onclick="switchTab('code')">Compiled Express Code</button>
+        <div class="tabs-header">
+          <div class="tabs">
+            <button class="tab active" id="jsonTab" onclick="switchTab('json')">Generated JSON AST</button>
+            <button class="tab" id="codeTab" onclick="switchTab('code')">Compiled Express Code</button>
+          </div>
+          <button class="btn-copy" id="copyBtn" onclick="copyCurrentOutput()">📋 Copy Code</button>
         </div>
         
         <div id="jsonWrapper">
@@ -77,6 +97,8 @@
 
   <script>
     let currentTab = 'json';
+    let rawJsonString = "";
+    let compiledCodeString = "";
 
     function switchTab(tabName) {
       currentTab = tabName;
@@ -86,9 +108,44 @@
       document.getElementById('codeWrapper').classList.toggle('hidden', tabName !== 'code');
     }
 
+    function clearPrompt() {
+      document.getElementById('promptInput').value = "";
+      document.getElementById('jsonOutput').innerText = "// Awaiting execution artifacts... Output will be rendered as formatted structural JSON.";
+      document.getElementById('codeOutput').innerText = "// Awaiting compilation... Generated Express.js deployment infrastructure script will appear here.";
+      document.getElementById('statusOutput').className = 'status';
+      document.getElementById('statusOutput').innerText = '';
+      rawJsonString = "";
+      compiledCodeString = "";
+      document.getElementById('copyBtn').innerText = "📋 Copy Code";
+    }
+
+    async function copyCurrentOutput() {
+      const copyButton = document.getElementById('copyBtn');
+      const textToCopy = currentTab === 'json' ? rawJsonString : compiledCodeString;
+
+      if (!textToCopy || textToCopy.startsWith("//")) {
+        alert("There is no compiled output to copy yet!");
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        copyButton.innerText = "⚡ Copied!";
+        copyButton.style.borderColor = "#4ade80";
+        
+        setTimeout(() => {
+          copyButton.innerText = "📋 Copy Code";
+          copyButton.style.borderColor = "var(--border)";
+        }, 2000);
+      } catch (err) {
+        console.error("Failed to copy text: ", err);
+      }
+    }
+
     async function executeCompilation() {
       const promptText = document.getElementById('promptInput').value.trim();
-      const btn = document.getElementById('compileBtn');
+      const compileBtn = document.getElementById('compileBtn');
+      const clearBtn = document.getElementById('clearBtn');
       const status = document.getElementById('statusOutput');
       
       if (!promptText) {
@@ -96,27 +153,33 @@
         return;
       }
 
-      btn.disabled = true;
+      compileBtn.disabled = true;
+      clearBtn.disabled = true;
       status.className = 'status loading';
       status.innerText = '⚙️ Running structural compilation segments via Groq...';
-      
+
       try {
         const response = await fetch(`${window.location.origin}/compile`, {
-            method: 'POST',
-            headers: { 
+          method: 'POST',
+          headers: { 
             'Content-Type': 'application/json',
-            'Accept': 'application/json' // Explicitly tell the server you only want JSON
-        },
-        body: JSON.stringify({ prompt: promptText })
-    });
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({ prompt: promptText })
+        });
 
         const data = await response.json();
 
         if (data.success) {
           status.className = 'status success';
           status.innerText = '✅ Compilation Successful! Schemas verified.';
-          document.getElementById('jsonOutput').innerText = JSON.stringify(data.schemas, null, 2);
-          document.getElementById('codeOutput').innerText = data.executableRuntimeCode;
+          
+          // Cache string states for explicit clipboard copies
+          rawJsonString = JSON.stringify(data.schemas, null, 2);
+          compiledCodeString = data.executableRuntimeCode;
+
+          document.getElementById('jsonOutput').innerText = rawJsonString;
+          document.getElementById('codeOutput').innerText = compiledCodeString;
         } else {
           throw new Error(data.error || 'Unknown pipeline failure.');
         }
@@ -125,7 +188,8 @@
         status.innerText = '❌ Compilation Failed.';
         document.getElementById('jsonOutput').innerText = '// Error Stack Trace:\n' + err.message;
       } finally {
-        btn.disabled = false;
+        compileBtn.disabled = false;
+        clearBtn.disabled = false;
       }
     }
   </script>
