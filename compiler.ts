@@ -111,21 +111,28 @@ async function generateWithRepair<T>(
 class LLMCompiler {
   static async extractIntent(rawInput: string) {
     console.log("[Stage 1] Extracting System Intent via Groq Cloud...");
-    const systemPrompt = `Extract core system dependencies: appName (string), coreEntities (array), userRoles (array), businessLogicRules (array).`;
+    const systemPrompt = `Extract core system dependencies. You must return a JSON object with these exact keys: appName (string), coreEntities (array of strings), userRoles (array of strings), businessLogicRules (array of strings).`;
     return await generateWithRepair(systemPrompt, rawInput, IntentSchema, "Intent Extraction");
   }
 
-  static async designDatabase(intent: z.infer<typeof IntentSchema>) {
+  static async designDatabase(intent: z.infer<typeof IntentSchema>): Promise<z.infer<typeof DBTableSchema>[]> {
     console.log("[Stage 2] Building Database Architectures...");
-    const systemPrompt = `Map application parameters to database designs. Create an object with a single "tables" array root. Ensure each entry has "tableName" and a nested "columns" array including 'name', 'type' (string/number/boolean/date/reference), and 'isRequired'.`;
+    const systemPrompt = `Map application parameters to database designs. You MUST return a JSON object containing a single root key named "tables", which contains an array of database tables.
+    Each table must have a "tableName" string and a "columns" array. Example structure: { "tables": [{ "tableName": "users", "columns": [] }] }`;
+    
     const wrapperSchema = z.object({ tables: z.array(DBTableSchema) });
     const result = await generateWithRepair(systemPrompt, JSON.stringify(intent), wrapperSchema, "Database Schema");
     return result.tables;
   }
 
-  static async designAPI(intent: z.infer<typeof IntentSchema>, dbSchema: any) {
+  static async designAPI(intent: z.infer<typeof IntentSchema>, dbSchema: z.infer<typeof DBTableSchema>[]) {
     console.log("[Stage 3] Compiling REST Microservice Routing & Middleware...");
-    const systemPrompt = `Generate a REST API model. Create an object with an "endpoints" array root. Allowed tables: ${JSON.stringify(dbSchema.map((t: any) => t.tableName))}. Allowed roles: ${JSON.stringify(intent.userRoles)}.`;
+    const existingTableNames = dbSchema.map(t => t.tableName);
+    
+    const systemPrompt = `Generate a REST API model. You MUST return a JSON object containing a single root key named "endpoints", which contains an array of routing objects.
+    CRITICAL CONSTRAINT: The "interactsWithTables" array for each endpoint can ONLY contain strings from this approved list of database tables: ${JSON.stringify(existingTableNames)}.
+    Allowed user roles for authentication options are: ${JSON.stringify(intent.userRoles)}.`;
+    
     return await generateWithRepair(systemPrompt, JSON.stringify(intent), APISchema, "API Schema");
   }
 }
