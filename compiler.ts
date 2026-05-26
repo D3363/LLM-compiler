@@ -131,34 +131,34 @@ class LLMCompiler {
 }
 
 // ==========================================
-// 5. EXECUTION AWARENESS (RUNTIME MOCK)
+// 4. EXECUTION AWARENESS (RUNTIME MOCK)
 // ==========================================
 
 function generateExecutableExpressCode(apiSchema: z.infer<typeof APISchema>) {
   console.log("\n[Execution Stage] Generating production-ready Express.js runtime assembly...\n");
-  let code = `import express from 'express';\n';
-  code += `const app = express();\n`;
-  code += `app.use(express.json());\n\n`;
-  code += `// Mock Authentication Middleware\n`;
-  code += `const requireAuth = (roles) => (req, res, next) => {\n`;
-  code += `    console.log('Checking permissions for roles:', roles);\n`;
-  code += `    next();\n`;
-  code += `};\n\n`;
+  
+  let code = "import express from 'express';\n";
+  code += "const app = express();\n";
+  code += "app.use(express.json());\n\n";
+  code += "// Mock Authentication Middleware\n";
+  code += "const requireAuth = (roles: string[]) => (req: any, res: any, next: any) => {\n";
+  code += "    console.log('Checking permissions for roles:', roles);\n";
+  code += "    next();\n};\n\n";
   
   apiSchema.endpoints.forEach(endpoint => {
     const authMiddleware = endpoint.requiresAuth ? `requireAuth(['${endpoint.allowedRoles.join("', '")}']), ` : '';
     const methodStr = endpoint.method.toLowerCase();
     code += `// Context Dependency Tables: ${endpoint.interactsWithTables.join(", ")}\n`;
     code += `app.${methodStr}('${endpoint.path}', ${authMiddleware}async (req, res) => {\n`;
-    code += `    res.status(200).json({ pipelineStatus: 'operational' });\n});\n\n`;
+    code += "    res.status(200).json({ pipelineStatus: 'operational' });\n});\n\n";
   });
   
-  code += `app.listen(3000, () => console.log('Local execution environment active on port 3000'));\n`;
+  code += "app.listen(3000, () => console.log('Local execution environment active on port 3000'));\n";
   return code;
 }
 
 // ==========================================
-// 6. EXPOSING THE COMPILER AS A PUBLIC WEB API
+// 5. EXPOSING THE COMPILER AS A PUBLIC WEB API
 // ==========================================
 import express, { type Request, type Response } from 'express';
 const server = express();
